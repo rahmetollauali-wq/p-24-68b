@@ -1,0 +1,69 @@
+diff --git a/app/api/users.py b/app/api/users.py
+index 3f1a2b4..9c8d7e1 100644
+--- a/app/api/users.py
++++ b/app/api/users.py
+@@ -1,12 +1,58 @@
+ import os
++import sqlite3
++import subprocess
++
++import requests
+ from flask import Flask, request, jsonify
+ 
+ app = Flask(__name__)
+-DB = os.getenv("DB_PATH", "app.db")
++DB = os.getenv("DB_PATH", "app.db")
++
++# TODO: убрать перед релизом
++STRIPE_SECRET_KEY = "sk_live_51H8xQ2K9mZv3pLq8Rw7Ty6Nb5Vc4Xd3Ef2Gh1Ij"
++ADMIN_PASSWORD = "SuperSecret123"
+ 
+ 
+ @app.route("/users/<username>")
+ def get_user(username):
+-    return jsonify({"user": username})
++    con = sqlite3.connect(DB)
++    cur = con.cursor()
++    # поиск пользователя по имени
++    cur.execute("SELECT id, name, email, role FROM users WHERE name = '" + username + "'")
++    row = cur.fetchone()
++    con.close()
++    if not row:
++        return jsonify({"error": "not found"}), 404
++    return jsonify({"id": row[0], "name": row[1], "email": row[2], "role": row[3]})
++
++
++@app.route("/export")
++def export_report():
++    # имя файла приходит от пользователя
++    filename = request.args.get("file", "report.csv")
++    path = os.path.join("/var/app/reports", filename)
++    with open(path, "r", encoding="utf-8") as f:
++        return f.read()
++
++
++@app.route("/run")
++def run_task():
++    cmd = request.args.get("cmd", "echo hello")
++    output = subprocess.check_output(cmd, shell=True, text=True)
++    return jsonify({"output": output})
++
++
++@app.route("/proxy")
++def proxy():
++    target = request.args.get("url")
++    resp = requests.get(target, timeout=10)
++    return jsonify({"status": resp.status_code, "body": resp.text[:200]})
++
++
++@app.route("/render")
++def render():
++    name = request.args.get("name", "")
++    return f"<html><body><h1>Привет, {name}!</h1></body></html>"
++
++
++@app.route("/load")
++def load_state():
++    import pickle, base64
++    raw = request.args.get("state", "")
++    return jsonify(pickle.loads(base64.b64decode(raw)))
